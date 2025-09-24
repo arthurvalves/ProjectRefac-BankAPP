@@ -1,1 +1,0 @@
-Utilizar Singleton como padrão criacional após implementar as funcionalidades.
