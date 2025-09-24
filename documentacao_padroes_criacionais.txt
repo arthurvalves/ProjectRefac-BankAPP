@@ -1,0 +1,47 @@
+
+# Padrões Criacionais Utilizados no Projeto
+
+## 1. Singleton
+**O que faz:**
+O Singleton garante que apenas uma instância de uma classe exista durante toda a execução do sistema. No contexto do projeto, isso é fundamental para o gerenciamento da conexão com o banco de dados, evitando múltiplas conexões desnecessárias, possíveis conflitos e facilitando o controle centralizado dos dados.
+
+**Como contribui:**
+- Centraliza o acesso ao banco de dados.
+- Evita inconsistências e problemas de concorrência.
+- Facilita manutenção e debugging, pois toda operação passa pela mesma instância.
+
+**Onde está aplicado:**
+- Arquivo: `database/db_manager.py`
+- Classe: `DBManager`
+- Utilização: Todas as operações de banco de dados usam a instância única de `DBManager`.
+
+## 2. Factory Method
+**O que faz:**
+O Factory Method permite criar objetos de diferentes tipos sem acoplar o código às classes concretas. No projeto, ele é usado para criar contas bancárias de tipos distintos (corrente, poupança), tornando fácil adicionar novos tipos de conta no futuro sem modificar o fluxo principal do sistema.
+
+**Como contribui:**
+- Facilita a extensão do sistema para novos tipos de conta.
+- Centraliza a lógica de criação, evitando duplicação de código.
+- Mantém o código desacoplado e mais limpo.
+
+**Onde está aplicado:**
+- Arquivo: `models/account_factory.py`
+- Classe: `ContaFactory`
+- Utilização: Criação de contas pelo método `criar_conta`, usado no cadastro de contas em `main.py`.
+
+## 3. Builder
+**O que faz:**
+O Builder permite criar objetos complexos passo a passo, especialmente úteis quando há muitos atributos opcionais. No projeto, o Builder é usado para criar usuários com dados adicionais (endereço, telefone, e-mail), tornando o processo de cadastro flexível e evitando construtores com muitos parâmetros.
+
+**Como contribui:**
+- Permite criar objetos de forma clara e flexível, mesmo com muitos atributos opcionais.
+- Evita construtores longos e difíceis de manter.
+- Facilita a validação e montagem de objetos antes de sua criação final.
+
+**Onde está aplicado:**
+- Arquivo: `models/user_builder.py`
+- Classe: `UserBuilder`
+- Utilização: Cadastro de usuário em `main.py` utiliza o Builder para criar o objeto `User`.
+
+---
+Esses padrões tornam o código mais modular, flexível e fácil de manter, cada um resolvendo um problema específico de criação de objetos no sistema bancário. Eles facilitam a evolução do sistema, a manutenção e a inclusão de novas funcionalidades sem grandes refatorações.
