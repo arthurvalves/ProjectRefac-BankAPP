@@ -3,11 +3,7 @@
 
 Este é um sistema de **gerenciamento bancário**, desenvolvido em Python como parte da disciplina de Projeto de Software.
 
-<<<<<<< HEAD
-O projeto utiliza **padrões de projeto criacionais** (Singleton, Factory Method, Builder) e **comportamentais** (Command, Strategy), garantindo uma arquitetura robusta, coesa e extensível.
-=======
-O projeto utiliza **padrões de projeto criacionais** (Singleton, Factory Method, Builder) e **comportamentais** (Command, Strategy).
->>>>>>> 4f186176604212acc06f10fb64bee9036162e7b3
+O projeto utiliza **padrões de projeto criacionais** (Singleton, Factory Method, Builder) e **comportamentais** (Command, Strategy, Observer), garantindo uma arquitetura robusta, coesa e extensível.
 
 ---
 
@@ -41,6 +37,7 @@ O projeto utiliza **padrões de projeto criacionais** (Singleton, Factory Method
 * `models/user_builder.py`: Builder para construção de objetos `User`
 * `database/ger_bd.py`: Singleton para conexão e operações no banco de dados
 * `commands.py`: Padrão Command para encapsular as ações do menu
+* `observer.py`: Padrão Observer para notificar ao usuário quando for recebido valores em sua conta. 
 * `services/investimento_strategies.py`: Padrão Strategy para diferentes tipos de investimento
 * `services/*`: Módulos de serviço para cada funcionalidade (transferência, câmbio, etc.)
 * `utils/validacao.py`: validações de dados de entrada
