@@ -3,7 +3,11 @@
 
 Este é um sistema de **gerenciamento bancário**, desenvolvido em Python como parte da disciplina de Projeto de Software.
 
+<<<<<<< HEAD
 O projeto utiliza **padrões de projeto criacionais** (Singleton, Factory Method, Builder) e **comportamentais** (Command, Strategy), garantindo uma arquitetura robusta, coesa e extensível.
+=======
+O projeto utiliza **padrões de projeto criacionais** (Singleton, Factory Method, Builder) e **comportamentais** (Command, Strategy).
+>>>>>>> 4f186176604212acc06f10fb64bee9036162e7b3
 
 ---
 
