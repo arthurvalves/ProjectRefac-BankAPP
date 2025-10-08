@@ -1,7 +1,7 @@
 
 import sqlite3
 import os
-from models.transaction import Transacao
+from models.transacoes import Transacao
 from datetime import datetime
 
 def conectar():

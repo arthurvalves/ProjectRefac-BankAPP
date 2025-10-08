@@ -26,13 +26,13 @@ Além disso, foi projetado utilizando **padrões de projeto criacionais** (Singl
 
 ### 🧱 Classes e módulos principais
 
-* `models/account.py`: modelo de conta bancária
+* `models/conta.py`: modelo de conta bancária
 * `models/user.py`: modelo de usuário
-* `models/account_factory.py`: Factory Method para criação de contas
+* `models/conta_factory.py`: Factory Method para criação de contas
 * `models/user_builder.py`: Builder para criação de usuários
-* `database/db_manager.py`: Singleton para conexão e operações no banco de dados
-* `services/account_service.py`: operações de conta (depósito, saque, transferência, boleto)
-* `utils/validation.py`: validações de dados de entrada
+* `database/ger_bd.py`: Singleton para conexão e operações no banco de dados
+* `services/conta_service.py`: operações de conta (depósito, saque, transferência, boleto)
+* `utils/validacao.py`: validações de dados de entrada
 * `main.py`: interface principal (menu de interação com o sistema)
 
 ### 🔧 Funções principais
@@ -92,8 +92,9 @@ git clone https://github.com/arthurvalves/ProjectRefac-BankAPP.git
 # Entre na pasta do projeto
 cd ProjectRefac-BankAPP
 
+# Instale as dependências
+pip install -r requirements.txt
+
 # Execute o sistema
 python main.py
 ```
-
-

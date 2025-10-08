@@ -1,23 +1,28 @@
-from database.db_manager import DBManager
-from database.db_transaction_manager import salvar_transacao, criar_tabela_transacoes, deletar_transacoes
-from models.account_factory import ContaFactory
-from models.user_builder import UserBuilder
-from utils.validation import validar_nome, validar_cpf, gerar_numero_conta
-from services.loan_service import aplicar_investimento, solicitar_emprestimo
+from database.ger_bd import DBManager
+from database.ger_transacao_bd import salvar_transacao, criar_tabela_transacoes, deletar_transacoes
+from services.emprest_service import solicitar_emprestimo
 from services.transfer_service import transferir
-from services.notification_service import definir_alerta, verificar_alerta
-from services.currency_service import cambio 
-from services.payment_service import pagar_conta
-from services.checkbook_service import solicitar_talao
-from services.support_service import registrar_suporte, listar_mensagens
+from services.alerta_service import definir_alerta, verificar_alerta
+from services.cambio_service import cambio 
+from services.pagar_service import pagar_conta
+from services.talao_service import solicitar_talao
+from services.suporte_service import registrar_suporte, listar_mensagens
+from commands import (
+    CriarContaCommand, VerSaldoCommand, DepositarCommand, SacarCommand,
+    AplicarInvestimentoCommand, SairCommand, NullCommand
+)
+from services.investimento_strategies import CDBStrategy, TesouroDiretoStrategy
 
+import os
 
+simbolos_moeda = {'BRL': 'R$', 'USD': '$', 'EUR': '€', 'JPY': '¥'}
 
-db = DBManager()
+db = DBManager() 
 db.criar_tabelas()
 
 users = []
 contas = []
+
 
 
 def procurar_conta(num_conta):
@@ -28,92 +33,6 @@ def procurar_conta(num_conta):
     if conta:
         contas.append(conta)
     return conta
-
-
-
-
-
-
-def criando_user():
-    nome = input("Nome do titular: ")
-    if not validar_nome(nome):
-        print("Nome inválido! Use apenas letras e espaços.")
-        return
-    cpf = input("CPF: ")
-    if not validar_cpf(cpf):
-        print("CPF inválido!")
-        return
-    endereco = input("Endereço (opcional): ")
-    telefone = input("Telefone (opcional): ")
-    if telefone and not validar_telefone(telefone):
-        print("Telefone inválido! Informe um número nacional válido.")
-        return
-    email = input("E-mail (opcional): ")
-    if email and not validar_email(email):
-        print("E-mail inválido!")
-        return
-    num_conta = gerar_numero_conta()
-    tipo = input("Tipo de conta (corrente/poupanca): ").strip().lower()
-    moeda = input("Moeda da conta (BRL/USD/EUR): ").strip().upper()
-
-    builder = UserBuilder().set_nome(nome).set_cpf(cpf)
-    if endereco:
-        builder.set_endereco(endereco)
-    if telefone:
-        builder.set_telefone(telefone)
-    if email:
-        builder.set_email(email)
-
-    try:
-        user = builder.build()
-        conta = ContaFactory.criar_conta(tipo, num_conta, user.nome, user.cpf)
-        conta.moeda = moeda if moeda in ['BRL', 'USD', 'EUR'] else 'BRL'
-        conta.proprietario.endereco = user.endereco
-        conta.proprietario.telefone = user.telefone
-        conta.proprietario.email = user.email
-        db.salvar_conta(conta)
-        print(f"\nConta {conta.tipo} criada com sucesso para {user.nome}! Número da conta: {num_conta} | Moeda: {conta.moeda}\n")
-    except ValueError as e:
-        print(f"\nErro: {e}\n")
-
-
-def depositar():
-    acc_num = input("Número da conta: ")
-    conta = procurar_conta(acc_num)
-
-    if conta:
-        quantidade = float(input("Valor para depósito: "))
-        conta.deposito(quantidade)
-        transacao = conta.historico[-1]
-        salvar_transacao(conta.num_conta, transacao)
-        db.salvar_conta(conta)
-
-        print(f"\nDepósito de R${quantidade:.2f} realizado com sucesso!\n")
-        verificar_alerta(conta)
-    else:
-        print("\nConta não encontrada.\n")
-
-def sacar():
-    acc_num = input("Número da conta: ")
-    conta = procurar_conta(acc_num)
-
-    if conta:
-        quantidade = float(input("Valor para saque: "))
-        if quantidade <= 0:
-            print("\nValor inválido para saque.\n")
-            return
-        if quantidade > conta.saldo:
-            print("\nSaldo insuficiente.\n")
-            return
-        if conta.saque(quantidade):
-            salvar_transacao(conta.num_conta, conta.historico[-1])
-            db.salvar_conta(conta)
-            print(f"\nSaque de R${quantidade:.2f} realizado com sucesso!\n")
-            verificar_alerta(conta)
-        else:
-            print("\nOperação de saque falhou.\n")
-    else:
-        print("\nConta não encontrada.\n")
 
 def transferir_entre_contas():
     acc_origem = input("Conta de origem: ")
@@ -142,14 +61,6 @@ def transferir_entre_contas():
     else:
         print("\nConta(s) não encontrada(s).\n")
 
-def ver_saldo():
-    acc_num = input("Número da conta: ")
-    conta = procurar_conta(acc_num)
-    if conta:
-        print(f"\nSaldo atual: R${conta.saldo:.2f}\n")
-    else:
-        print("\nConta não encontrada.\n")
-
 def ver_historico():
     acc_num = input("Número da conta: ")
     conta = procurar_conta(acc_num)
@@ -159,7 +70,8 @@ def ver_historico():
             print("\n Nenhuma transação registrada.\n")
         else:
             for transacao in conta.historico:
-                print(f"- {transacao}")
+                texto = str(transacao)
+                print(f"- {texto}")
     else:
         print("\nConta não encontrada.\n")
 
@@ -169,9 +81,9 @@ def limpar_historico():
     if conta:
         confirm = input("Tem certeza que deseja apagar TODO o histórico? (s/n): ").lower()
         if confirm == "s":
-            conta.historico.clear()                 # Limpa na memória
-            deletar_transacoes(conta.num_conta)     # Limpa no banco
-            db.salvar_conta(conta)                     # Atualiza saldo
+            conta.historico.clear()                 
+            deletar_transacoes(conta.num_conta)     
+            db.salvar_conta(conta)                     
             print("\nHistórico apagado com sucesso!\n")
         else:
             print("\nOperação cancelada.\n")
@@ -181,9 +93,11 @@ def limpar_historico():
 def pagamento_de_conta():
     acc_num = input("Número da conta: ")
     conta = procurar_conta(acc_num)
+    
     if conta:
         descricao = input("Descrição da conta (ex: Conta de luz): ")
         valor = float(input("Valor a pagar: "))
+        
         if valor <= 0:
             print("\nValor inválido para pagamento.\n")
             return
@@ -203,6 +117,7 @@ def pagamento_de_conta():
 def solicitar_talao_cheques():
     acc_num = input("Número da conta: ")
     conta = procurar_conta(acc_num)
+    
     if conta:
         try:
             quantidade = int(input("Quantidade de talões a solicitar (R$15,00 cada): "))
@@ -211,6 +126,7 @@ def solicitar_talao_cheques():
         except ValueError:
             print("\nQuantidade inválida. Deve ser um número inteiro positivo.\n")
             return
+        
         if solicitar_talao(conta, quantidade):
             salvar_transacao(conta.num_conta, conta.historico[-1])
             db.salvar_conta(conta)
@@ -226,6 +142,7 @@ def solicitar_talao_cheques():
 def suporte_cliente():
     acc_num = input("Número da conta: ")
     conta = procurar_conta(acc_num)
+    
     if conta:
         print("\n1 - Enviar nova mensagem")
         print("2 - Ver mensagens anteriores")
@@ -249,110 +166,100 @@ def suporte_cliente():
     else:
         print("\nConta não encontrada.\n")
 
-def aplicar_investimento_opcao():
-    conta = procurar_conta(input("Número da conta: "))
-    if conta:
-        print("\nEscolha o tipo de investimento:")
-        print("1 - Poupança (0,65% a.m.)")
-        print("2 - CDB (0,90% a.m.)")
-        print("3 - Tesouro Direto (0,75% a.m.)")
-        opcao = input("Digite o número da opção: ")
-
-        tipos = {"1": "poupanca", "2": "cdb", "3": "tesouro"}
-        tipo = tipos.get(opcao)
-
-        if tipo is None:
-            print("\nOpção inválida.\n")
-            return
-
-        valor = float(input("Valor a aplicar: "))
-        meses = int(input("Prazo em meses: "))
-        retorno = aplicar_investimento(conta, valor, meses, tipo)
-
-        if retorno:
-            salvar_transacao(conta.num_conta, conta.historico[-1])
-            db.salvar_conta(conta)
-            print(f"\nInvestimento realizado. Retorno estimado: R${retorno:.2f}\n")
-    else:
-        print("\nConta não encontrada.\n")
-
 
 def menu():
     while True:
         print("\n========= AV BANK =========\n")
-        print("1 - Criar conta")
-        print("2 - Depositar")
-        print("3 - Sacar")
-        print("4 - Transferir")
-        print("5 - Ver saldo")
-        print("6 - Ver histórico de transações")
-        print("7 - Solicitar empréstimo")
-        print("8 - Definir alerta de saldo")
-        print("9 - Câmbio de moedas")
-        print("10 - Aplicar em Poupança/Investimentos")
-        print("11 - Limpar histórico da conta")
-        print("12 - Pagar conta")
+        
+        print("--- Gestão da Conta ---")
+        print(" 1 - Criar conta")
+        print(" 2 - Ver saldo")
+        print(" 3 - Ver histórico de transações")
+        print(" 4 - Definir alerta de saldo")
+        print(" 5 - Limpar histórico da conta")
+        
+        print("\n--- Operações Financeiras ---")
+        print(" 6 - Depositar")
+        print(" 7 - Sacar")
+        print(" 8 - Transferir")
+        print(" 9 - Pagar conta")
+
+        print("\n--- Produtos e Serviços ---")
+        print("10 - Solicitar empréstimo")
+        print("11 - Câmbio de moedas")
+        print("12 - Aplicar em Investimentos")
         print("13 - Solicitar talão de cheques")
+
+        print("\n--- Sistema e Suporte ---")
         print("14 - Suporte ao Cliente")
         print("15 - Sair")
 
-
-
-        opcao = input("Escolha uma opção: ")
+        opcao = input("\nEscolha uma opção: ")
 
         if opcao == "1":
-            criando_user()
+            CriarContaCommand(db, procurar_conta).execute()
         elif opcao == "2":
-            depositar()
+            VerSaldoCommand(procurar_conta).execute()
         elif opcao == "3":
-            sacar()
-        elif opcao == "4":
-            transferir_entre_contas()
-        elif opcao == "5":
-            ver_saldo()
-        elif opcao == "6":
             ver_historico()
+        elif opcao == "4":
+            conta = procurar_conta(input("Número da conta: "))
+            if conta:
+                limite = float(input("Definir alerta se saldo for menor que: R$"))
+                definir_alerta(conta, limite)
+                print(f"\nAlerta definido para a conta {conta.num_conta} com limite de R${limite:.2f}.\n")
+            else:
+                print("\nConta não encontrada.\n")
+                
+        elif opcao == "5":
+            limpar_historico()
+            
+        elif opcao == "6":
+            DepositarCommand(db, procurar_conta).execute()
+            
         elif opcao == "7":
+            SacarCommand(db, procurar_conta).execute()
+            
+        elif opcao == "8":
+            transferir_entre_contas()
+            
+        elif opcao == "9":
+            pagamento_de_conta()
+            
+        elif opcao == "10":
             conta = procurar_conta(input("Número da conta: "))
             if conta:
                 valor = float(input("Valor do empréstimo: "))
                 solicitar_emprestimo(conta, valor)
                 salvar_transacao(conta.num_conta, conta.historico[-1])
                 db.salvar_conta(conta)
-
                 print("\nEmpréstimo realizado.\n")
             else:
                 print("\nConta não encontrada.\n")
-        elif opcao == "8":
-            db.salvar_conta(conta)
-            
-            if conta:
-                limite = float(input("Definir alerta se saldo for menor que: R$"))
-                print("\n")
-                definir_alerta(conta, limite)
-            else:
-                print("\nConta não encontrada.\n")
-        elif opcao == "9":
+                
+        elif opcao == "11":
             conta = procurar_conta(input("Número da conta: "))
             if conta:
-                moeda = input("Para qual moeda (USD, EUR, JPY): ").upper()
+                while True:
+                    moeda = input("Para qual moeda (USD, EUR, JPY): ").upper()
+                    if moeda in ["USD", "EUR", "JPY"]:
+                        break
+                    print("\nMoeda inválida. Por favor, escolha entre USD, EUR ou JPY.\n")
+
                 valor = float(input("Valor em R$: "))
                 valor_convertido = cambio(conta, moeda, valor)
+                
                 if valor_convertido is not None:
                     salvar_transacao(conta.num_conta, conta.historico[-1])
-                    salvar_conta(conta)
+                    db.salvar_conta(conta)
                     print(f"\nOperação realizada com sucesso! Valor convertido: {valor_convertido:.2f} {moeda}\n")
                 else:
                     print("\nOperação de câmbio falhou.\n")
             else:
                 print("\nConta não encontrada.\n")
-                db.salvar_conta(conta)
                 
-            aplicar_investimento_opcao()
-        elif opcao == "11":
-            limpar_historico()
         elif opcao == "12":
-            pagamento_de_conta()
+            AplicarInvestimentoCommand(db, procurar_conta).execute()
         elif opcao == "13":
             solicitar_talao_cheques()
         elif opcao == "14":
@@ -361,11 +268,12 @@ def menu():
             print("\nEncerrando o sistema. Obrigado!\n")
             break
         else:
+            os.system('cls')
             print("\nOpção inválida!\n")
+            
 
 if __name__ == "__main__":
     db = DBManager()
     db.criar_tabelas()
     criar_tabela_transacoes()
     menu()
-

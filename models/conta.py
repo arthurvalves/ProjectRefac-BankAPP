@@ -1,19 +1,20 @@
 from datetime import datetime
-from models.transaction import Transacao
+from models.transacoes import Transacao
 
 class Conta:
     def __init__(self, num_conta, proprietario, saldo=0.0, moeda='BRL'):
         self.num_conta = num_conta
         self.proprietario = proprietario
-        self.saldo = saldo
-        self.moeda = moeda  # Suporte a múltiplas moedas
+        self.saldo = saldo  # Saldo principal sempre em BRL
+        self.saldos_estrangeiros = {}  # Dicionário para { 'USD': 100.0, 'EUR': 50.0 }
         self.historico = []
         self.alerta_saldo = None
 
     def deposito(self, quantidade):
         if quantidade > 0.0:
             self.saldo += quantidade
-            self.historico.append(Transacao("Depósito", quantidade))
+            from main import simbolos_moeda
+            self.historico.append(Transacao("Depósito", quantidade, simbolo_moeda='R$'))
 
     def saque(self, quantidade):
         if 0 < quantidade <= self.saldo:

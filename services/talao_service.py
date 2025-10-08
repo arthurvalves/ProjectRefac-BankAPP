@@ -1,5 +1,5 @@
 
-from models.transaction import Transacao
+from models.transacoes import Transacao
 
 def solicitar_talao(conta, quantidade=1, cheques_por_talao=25, custo_por_talao=15.0):
     total = quantidade * custo_por_talao

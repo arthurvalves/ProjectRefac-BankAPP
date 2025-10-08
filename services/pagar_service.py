@@ -1,4 +1,4 @@
-from models.transaction import Transacao
+from models.transacoes import Transacao
 
 def pagar_conta(conta, descricao, valor):
     if conta.saque(valor):

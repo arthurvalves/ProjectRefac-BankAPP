@@ -1,5 +1,5 @@
-from database.db_manager import DBManager
-from models.account_factory import ContaFactory
+from database.ger_bd import DBManager
+from models.conta_factory import ContaFactory
 
 class AccountService:
     def __init__(self):
@@ -17,7 +17,7 @@ class AccountService:
 
     def criar_conta(self, tipo, nome, cpf, endereco=None, telefone=None, email=None):
         num_conta = None
-        from utils.validation import gerar_numero_conta
+        from utils.validacao import gerar_numero_conta
         num_conta = gerar_numero_conta()
         conta = ContaFactory.criar_conta(tipo, num_conta, nome, cpf)
         conta.proprietario.endereco = endereco

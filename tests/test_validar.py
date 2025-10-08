@@ -1,5 +1,5 @@
 import pytest
-from utils.validation import validar_nome, validar_cpf, validar_telefone, validar_email
+from utils.validacao import validar_nome, validar_cpf, validar_telefone, validar_email
 
 def test_validar_nome():
     assert validar_nome("João da Silva")

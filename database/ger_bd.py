@@ -1,9 +1,9 @@
 import sqlite3
 import os
 from models.user import User
-from models.account import Conta
-from models.transaction import Transacao
-from database.db_transaction_manager import (
+from models.conta import Conta
+from models.transacoes import Transacao
+from database.ger_transacao_bd import (
     criar_tabela_transacoes,
     salvar_transacao,
     carregar_transacoes
@@ -13,11 +13,14 @@ class DBManager:
     _instance = None
     _connection = None
 
-    def __new__(cls):
+    def __new__(cls): 
         if cls._instance is None:
             cls._instance = super(DBManager, cls).__new__(cls)
             cls._instance._init_connection()
         return cls._instance
+
+
+
 
     def _init_connection(self):
         os.makedirs("data", exist_ok=True)
