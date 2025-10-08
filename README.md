@@ -1,9 +1,9 @@
 
 # 🏦 Banking Application - AV Bank
 
-Este é um sistema refatorado de **gerenciamento bancário**, desenvolvido em Python como parte da disciplina de Projeto de Software.
+Este é um sistema de **gerenciamento bancário**, desenvolvido em Python como parte da disciplina de Projeto de Software.
 
-Além disso, foi projetado utilizando **padrões de projeto criacionais** (Singleton, Factory Method e Builder), garantindo melhor organização, reuso e extensibilidade do código.
+O projeto utiliza **padrões de projeto criacionais** (Singleton, Factory Method, Builder) e **comportamentais** (Command, Strategy), garantindo uma arquitetura robusta, coesa e extensível.
 
 ---
 
@@ -11,12 +11,17 @@ Além disso, foi projetado utilizando **padrões de projeto criacionais** (Singl
 
 * ✅ **Cadastro de usuários** (nome, CPF, telefone e e-mail com validação)
 * ✅ **Cadastro de contas** (corrente ou poupança, com escolha de moeda)
-* ✅ **Listagem de contas e usuários**
-* ✅ **Depósito e saque** (com validação de saldo e permissões)
-* ✅ **Transferência entre contas** (somente contas da mesma moeda)
-* ✅ **Pagamento de boletos**
-* ✅ **Validação de dados** (nome, CPF com 11 dígitos, telefone, e-mail)
+* ✅ **Operações básicas** (depósito, saque, transferência)
+* ✅ **Pagamento de contas**
+* ✅ **Histórico de transações** (visualização e limpeza)
+* ✅ **Investimentos** com diferentes estratégias (CDB e Tesouro Direto)
+* ✅ **Câmbio de moedas** (USD, EUR, JPY) com consulta a API externa
+* ✅ **Solicitação de empréstimos**
+* ✅ **Solicitação de talão de cheques**
+* ✅ **Alerta de saldo mínimo**
+* ✅ **Suporte ao cliente** para registro de ocorrências
 * ✅ **Persistência em banco de dados SQLite**
+* ✅ **Validação de dados de entrada** (nome, CPF, telefone, e-mail)
 * ✅ **Testes automatizados com pytest** (para validação e operações básicas)
 
 
@@ -29,23 +34,13 @@ Além disso, foi projetado utilizando **padrões de projeto criacionais** (Singl
 * `models/conta.py`: modelo de conta bancária
 * `models/user.py`: modelo de usuário
 * `models/conta_factory.py`: Factory Method para criação de contas
-* `models/user_builder.py`: Builder para criação de usuários
+* `models/user_builder.py`: Builder para construção de objetos `User`
 * `database/ger_bd.py`: Singleton para conexão e operações no banco de dados
-* `services/conta_service.py`: operações de conta (depósito, saque, transferência, boleto)
+* `commands.py`: Padrão Command para encapsular as ações do menu
+* `services/investimento_strategies.py`: Padrão Strategy para diferentes tipos de investimento
+* `services/*`: Módulos de serviço para cada funcionalidade (transferência, câmbio, etc.)
 * `utils/validacao.py`: validações de dados de entrada
 * `main.py`: interface principal (menu de interação com o sistema)
-
-### 🔧 Funções principais
-
-* `cadastrar_usuario()`
-* `cadastrar_conta()`
-* `listar_usuarios()`
-* `listar_contas()`
-* `depositar()`
-* `sacar()`
-* `transferir()`
-* `pagar_boleto()`
-* `menu()` – interface principal
 
 ---
 
@@ -73,9 +68,8 @@ A modelagem é simples, modular e orientada a objetos, com cada classe encapsula
 * [ ] **Interface gráfica** para facilitar a interação do usuário.
 * [ ] **Sistema de login** com autenticação segura e gerenciamento de credenciais.
 * [ ] **Módulo de investimentos** com suporte a:
-
-  * [ ] Poupança
-  * [ ] CDB
+  * [x] CDB
+  * [x] Tesouro Direto
   * [ ] FIIs
   * [ ] Ações
 * [ ] **Gestão de permissões** diferenciando **administradores** e **usuários comuns**.

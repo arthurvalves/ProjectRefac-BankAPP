@@ -4,11 +4,12 @@ from database.ger_transacao_bd import salvar_transacao, deletar_transacoes
 from models.conta_factory import ContaFactory
 from models.user_builder import UserBuilder
 from utils.validacao import validar_nome, validar_cpf, validar_email, validar_telefone, gerar_numero_conta
-from services.emprest_service import aplicar_investimento, solicitar_emprestimo
+from services.emprest_service import aplicar_investimento
 from services.investimento_strategies import CDBStrategy, TesouroDiretoStrategy
 from services.transfer_service import transferir
 from services.alerta_service import definir_alerta, verificar_alerta
-from services.cambio_service import cambio
+from services.cambio_service import cambio 
+from observer import Observavel
 from services.pagar_service import pagar_conta
 from services.talao_service import solicitar_talao
 from services.suporte_service import registrar_suporte, listar_mensagens
@@ -18,39 +19,39 @@ simbolos_moeda = {'BRL': 'R$', 'USD': '$', 'EUR': '€', 'JPY': '¥'}
 class Command(ABC):
     @abstractmethod
     def execute(self):
-        pass
+       pass
 
 class CriarContaCommand(Command):
     def __init__(self, db, procurar_conta_func):
         self.db = db
-    
+
     def execute(self):
         nome = input("Nome do titular: ")
         if not validar_nome(nome):
             print("Nome inválido! Use apenas letras e espaços.")
             return
-        
-        cpf = input("CPF: ")
+
+        cpf = input("CPF: ") 
         if not validar_cpf(cpf):
             print("CPF inválido!")
             return
-        
+
         endereco = input("Endereço (opcional): ")
-        telefone = input("Telefone (opcional): ")
-        
+        telefone = input("Telefone (opcional): ") 
+
         if telefone and not validar_telefone(telefone):
             print("Telefone inválido! Informe um número nacional válido.")
             return
-        
-        email = input("E-mail (opcional): ")
+
+        email = input("E-mail (opcional): ") 
         if email and not validar_email(email):
             print("E-mail inválido!")
             return
-        
-        num_conta = gerar_numero_conta()
-        
+
+        num_conta = gerar_numero_conta() 
+
         while True:
-            tipo = input("Tipo de conta (corrente/poupanca): ").strip().lower()
+            tipo = input("Tipo de conta (corrente/poupanca): ").strip().lower() 
             if tipo in ["corrente", "poupanca"]:
                 break
             print("\nTipo de conta incorreta, escolha entre Corrente ou Poupanca\n")
@@ -63,19 +64,19 @@ class CriarContaCommand(Command):
         if email: builder.set_email(email)
 
         try:
-            user = builder.build()
-            conta = ContaFactory.criar_conta(tipo, num_conta, user.nome, user.cpf)
-            conta.proprietario.endereco = user.endereco
-            conta.proprietario.telefone = user.telefone
-            conta.proprietario.email = user.email
+            usuario = builder.build()
+            conta = ContaFactory.criar_conta(tipo, num_conta, usuario.nome, usuario.cpf)
+            conta.proprietario.endereco = usuario.endereco
+            conta.proprietario.telefone = usuario.telefone
+            conta.proprietario.email = usuario.email
             self.db.salvar_conta(conta)
-            print(f"\nConta {conta.tipo} criada com sucesso para {user.nome}! Número da conta: {num_conta} | Moeda: BRL\n")
+            print(f"\nConta {conta.tipo} criada com sucesso para {usuario.nome}! Número da conta: {num_conta} | Moeda: BRL\n")
         except ValueError as e:
             print(f"\nErro: {e}\n")
 
 class VerSaldoCommand(Command):
     def __init__(self, procurar_conta_func):
-        self.procurar_conta = procurar_conta_func
+       self.procurar_conta = procurar_conta_func
 
     def execute(self):
         conta = self.procurar_conta(input("Número da conta: "))
@@ -91,15 +92,16 @@ class VerSaldoCommand(Command):
 
 class DepositarCommand(Command):
     def __init__(self, db, procurar_conta_func):
-        self.db = db
-        self.procurar_conta = procurar_conta_func
+       self.db = db
+       self.procurar_conta = procurar_conta_func
+
 
     def execute(self):
         conta = self.procurar_conta(input("Número da conta: "))
         if not conta:
             print("\nConta não encontrada.\n")
             return
-        
+
         try:
             quantidade = float(input("Valor para depósito: "))
             if quantidade <= 0:
@@ -112,7 +114,7 @@ class DepositarCommand(Command):
         conta.deposito(quantidade)
         salvar_transacao(conta.num_conta, conta.historico[-1])
         self.db.salvar_conta(conta)
-        print(f"\nDepósito de R${quantidade:.2f} realizado com sucesso!\n")
+        print(f"\nDepósito de R$ {quantidade:.2f} realizado com sucesso!\n")
         verificar_alerta(conta)
 
 class SacarCommand(Command):
@@ -126,8 +128,9 @@ class SacarCommand(Command):
             print("\nConta não encontrada.\n")
             return
 
+
         try:
-            quantidade = float(input("Valor para saque: "))
+           quantidade = float(input("Valor para saque: "))
         except ValueError:
             print("\nValor inválido.\n")
             return
@@ -139,7 +142,7 @@ class SacarCommand(Command):
         if conta.saque(quantidade):
             salvar_transacao(conta.num_conta, conta.historico[-1])
             self.db.salvar_conta(conta)
-            print(f"\nSaque de R${quantidade:.2f} realizado com sucesso!\n")
+            print(f"\nSaque de R$ {quantidade:.2f} realizado com sucesso!\n")
             verificar_alerta(conta)
         else:
             print("\nOperação de saque falhou. Saldo insuficiente?\n")
@@ -149,12 +152,8 @@ class AplicarInvestimentoCommand(Command):
         self.db = db
         self.procurar_conta = procurar_conta_func
 
-    def execute(self):
-        conta = self.procurar_conta(input("Número da conta: "))
-        if not conta:
-            print("\nConta não encontrada.\n")
-            return
 
+    def execute(self):
         print("\nEscolha o tipo de investimento:")
         print("1 - CDB (0,90% a.m.)")
         print("2 - Tesouro Direto (0,75% a.m.)")
@@ -172,8 +171,8 @@ class AplicarInvestimentoCommand(Command):
             return
 
         try:
-            valor = float(input("Valor a aplicar: "))
-            meses = int(input("Prazo em meses: "))
+           valor = float(input("Valor a aplicar: "))
+           meses = int(input("Prazo em meses: "))
         except ValueError:
             print("\nValor ou prazo inválido.\n")
             return
@@ -185,20 +184,20 @@ class AplicarInvestimentoCommand(Command):
         retorno = aplicar_investimento(conta, valor, meses, estrategia)
 
         if retorno is not None:
-            salvar_transacao(conta.num_conta, conta.historico[-1])
-            self.db.salvar_conta(conta)
-            print(f"\nInvestimento realizado. Retorno estimado ao final do período: R${retorno:.2f}\n")
-            verificar_alerta(conta)
+           salvar_transacao(conta.num_conta, conta.historico[-1])
+           self.db.salvar_conta(conta)
+           print(f"\nInvestimento realizado. Retorno estimado ao final do período: R$ {retorno:.2f}\n")
+           verificar_alerta(conta)
         else:
-            print("\nFalha ao aplicar investimento. Saldo insuficiente?\n")
+           print("\nFalha ao aplicar investimento. Saldo insuficiente?\n")
 
 class SairCommand(Command):
     def __init__(self, app):
         self.app = app
 
     def execute(self):
-        self.app.running = False
-        print("\nEncerrando o sistema. Obrigado!\n")
+       self.app.running = False
+       print("\nEncerrando o sistema. Obrigado!\n")
 
 
 class NullCommand(Command):

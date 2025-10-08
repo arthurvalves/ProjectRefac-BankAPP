@@ -9,10 +9,9 @@ from services.talao_service import solicitar_talao
 from services.suporte_service import registrar_suporte, listar_mensagens
 from commands import (
     CriarContaCommand, VerSaldoCommand, DepositarCommand, SacarCommand,
-    AplicarInvestimentoCommand, SairCommand, NullCommand
-)
+    AplicarInvestimentoCommand, SairCommand, NullCommand)
 from services.investimento_strategies import CDBStrategy, TesouroDiretoStrategy
-
+from observer import ObservadorAlertaTransacao
 import os
 
 simbolos_moeda = {'BRL': 'R$', 'USD': '$', 'EUR': '€', 'JPY': '¥'}
@@ -25,6 +24,8 @@ contas = []
 
 
 
+
+
 def procurar_conta(num_conta):
     for conta in contas:
         if conta.num_conta == num_conta:
@@ -32,6 +33,10 @@ def procurar_conta(num_conta):
     conta = db.carregar_conta(num_conta)
     if conta:
         contas.append(conta)
+        # Anexa o observador aqui, garantindo que seja feito apenas uma vez por sessão
+        alert_observer = ObservadorAlertaTransacao()
+        conta.anexar(alert_observer)
+
     return conta
 
 def transferir_entre_contas():
@@ -49,6 +54,7 @@ def transferir_entre_contas():
         if quantidade > origem.saldo:
             print("\nSaldo insuficiente na conta de origem.\n")
             return
+        
         if transferir(origem, destino, quantidade):
             salvar_transacao(origem.num_conta, origem.historico[-1])
             salvar_transacao(destino.num_conta, destino.historico[-1])
@@ -96,6 +102,9 @@ def pagamento_de_conta():
     
     if conta:
         descricao = input("Descrição da conta (ex: Conta de luz): ")
+        # Anexar o observador para notificar sobre o saque do pagamento
+        alert_observer = ObservadorAlertaTransacao()
+        conta.anexar(alert_observer)
         valor = float(input("Valor a pagar: "))
         
         if valor <= 0:
@@ -120,6 +129,9 @@ def solicitar_talao_cheques():
     
     if conta:
         try:
+            # Anexar o observador para notificar sobre o saque do talão
+            alert_observer = ObservadorAlertaTransacao()
+            conta.anexar(alert_observer)
             quantidade = int(input("Quantidade de talões a solicitar (R$15,00 cada): "))
             if quantidade <= 0:
                 raise ValueError
@@ -208,6 +220,7 @@ def menu():
                 limite = float(input("Definir alerta se saldo for menor que: R$"))
                 definir_alerta(conta, limite)
                 print(f"\nAlerta definido para a conta {conta.num_conta} com limite de R${limite:.2f}.\n")
+
             else:
                 print("\nConta não encontrada.\n")
                 
@@ -229,6 +242,9 @@ def menu():
         elif opcao == "10":
             conta = procurar_conta(input("Número da conta: "))
             if conta:
+                # Anexar o observador para notificar sobre o crédito do empréstimo
+                alert_observer = ObservadorAlertaTransacao()
+                conta.anexar(alert_observer)
                 valor = float(input("Valor do empréstimo: "))
                 solicitar_emprestimo(conta, valor)
                 salvar_transacao(conta.num_conta, conta.historico[-1])
@@ -240,6 +256,9 @@ def menu():
         elif opcao == "11":
             conta = procurar_conta(input("Número da conta: "))
             if conta:
+                # Anexar o observador para notificar sobre o saque do câmbio
+                alert_observer = ObservadorAlertaTransacao()
+                conta.anexar(alert_observer)
                 while True:
                     moeda = input("Para qual moeda (USD, EUR, JPY): ").upper()
                     if moeda in ["USD", "EUR", "JPY"]:
