@@ -3,13 +3,19 @@
 
 Este é um sistema de **gerenciamento bancário**, desenvolvido em Python como parte da disciplina de Projeto de Software.
 
-O projeto utiliza **padrões de projeto criacionais** (Singleton, Factory Method, Builder) e **comportamentais** (Command, Strategy, Observer), garantindo uma arquitetura robusta, coesa e extensível.
+
+O projeto utiliza um conjunto de **padrões de projeto** para garantir a separação de responsabilidades e a flexibilidade do código:
+*   **Criacionais**: Singleton, Factory Method, Builder.
+*   **Estruturais**: Facade, Adapter, Proxy.
+*   **Comportamentais**: Command, Strategy, Observer.
 
 ---
 
 ## ✅ Funcionalidades implementadas
 
 * ✅ **Cadastro de usuários** (nome, CPF, telefone e e-mail com validação)
+* ✅ **Sistema de login seguro** com hash de senhas, bloqueio por tentativas e recuperação de senha.
+* ✅ **Gerenciamento de papéis** (usuário e administrador).
 * ✅ **Cadastro de contas** (corrente ou poupança, com escolha de moeda)
 * ✅ **Operações básicas** (depósito, saque, transferência)
 * ✅ **Pagamento de contas**
@@ -21,9 +27,7 @@ O projeto utiliza **padrões de projeto criacionais** (Singleton, Factory Method
 * ✅ **Alerta de saldo mínimo**
 * ✅ **Suporte ao cliente** para registro de ocorrências
 * ✅ **Persistência em banco de dados SQLite**
-* ✅ **Validação de dados de entrada** (nome, CPF, telefone, e-mail)
-* ✅ **Testes automatizados com pytest** (para validação e operações básicas)
-
+* ✅ **Interface Gráfica (GUI)** com Tkinter para login e operações bancárias.
 
 ---
 
@@ -31,17 +35,22 @@ O projeto utiliza **padrões de projeto criacionais** (Singleton, Factory Method
 
 ### 🧱 Classes e módulos principais
 
-* `models/conta.py`: modelo de conta bancária
-* `models/user.py`: modelo de usuário
-* `models/conta_factory.py`: Factory Method para criação de contas
-* `models/user_builder.py`: Builder para construção de objetos `User`
-* `database/ger_bd.py`: Singleton para conexão e operações no banco de dados
-* `commands.py`: Padrão Command para encapsular as ações do menu
-* `observer.py`: Padrão Observer para notificar ao usuário quando for recebido valores em sua conta. 
-* `services/investimento_strategies.py`: Padrão Strategy para diferentes tipos de investimento
-* `services/*`: Módulos de serviço para cada funcionalidade (transferência, câmbio, etc.)
-* `utils/validacao.py`: validações de dados de entrada
-* `main.py`: interface principal (menu de interação com o sistema)
+*   `main.py`: Ponto de entrada para a aplicação em modo console (CLI).
+*   `gui/login_app.py`: Ponto de entrada para a aplicação com Interface Gráfica (GUI).
+*   `models/`: Contém as classes de domínio como `Conta`, `User` e `Transacao`.
+    *   `conta_factory.py`: **Factory Method** para criação de contas.
+    *   `user_builder.py`: **Builder** para construção de objetos `User`.
+*   `database/ger_bd.py`: **Singleton** para gerenciar a conexão e operações no banco de dados SQLite.
+*   `commands.py`: **Command** para encapsular as ações do menu da CLI.
+*   `services/`: Módulos que contêm a lógica de negócio.
+    *   `fachada_banco.py`: **Facade** que simplifica o acesso a operações complexas do sistema.
+    *   `investimento_strategies.py`: **Strategy** para diferentes tipos de investimento.
+    *   `servico_autenticacao.py`: Lógica de autenticação, gerenciamento de senhas e papéis.
+*   `utils/`: Utilitários e implementações de padrões.
+    *   `observer.py`: **Observer** para notificar sobre eventos (ex: transações).
+    *   `cambio_provider.py`: Interface (ABC) para o padrão **Adapter**.
+    *   `bcb_adapter.py`: **Adapter** concreto que consome a API do Banco Central.
+    *   `cambio_cache_proxy.py`: **Proxy** que adiciona cache às chamadas de câmbio.
 
 ---
 
@@ -66,15 +75,10 @@ A modelagem é simples, modular e orientada a objetos, com cada classe encapsula
 
 ## 🛠️ Desenvolvimentos futuros
 
-* [ ] **Interface gráfica** para facilitar a interação do usuário.
-* [ ] **Sistema de login** com autenticação segura e gerenciamento de credenciais.
-* [ ] **Módulo de investimentos** com suporte a:
-  * [x] CDB
-  * [x] Tesouro Direto
-  * [ ] FIIs
-  * [ ] Ações
-* [ ] **Gestão de permissões** diferenciando **administradores** e **usuários comuns**.
-
+*   [ ] Expandir a GUI para cobrir todas as funcionalidades do sistema.
+*   [ ] Adicionar mais estratégias de investimento (FIIs, Ações).
+*   [ ] Implementar um painel administrativo na GUI para gerenciamento de usuários.
+*   [ ] Melhorar o tratamento de concorrência nas operações de banco de dados.
 
 ## 🚀 Execução
 
