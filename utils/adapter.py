@@ -1,5 +1,6 @@
 from .fornecedor_cambio import IFornecedorCambio
 from . import cambio_api
+from utils.exceptions import ExternalAPIError
 
 ICambioProvider = IFornecedorCambio
 
@@ -17,7 +18,7 @@ class AdaptadorBCB(IFornecedorCambio):
             return taxa
         try:
             taxa_api = cambio_api.get_cambio(moeda)
-        except Exception:
+        except ExternalAPIError:
             taxa_api = None
 
         return taxa_api if taxa_api is not None else 1.0

@@ -3,7 +3,7 @@ from database.ger_bd import DBManager
 from database.ger_transacao_bd import salvar_transacao, deletar_transacoes
 from models.conta_factory import ContaFactory
 from models.user_builder import UserBuilder
-from utils.validacao import validar_nome, validar_cpf, validar_email, validar_telefone, gerar_numero_conta
+from utils.validacao import validar_nome, validar_email, validar_telefone, gerar_numero_conta, normalizar_cpf, cpf_tem_11_digitos
 from services.emprest_service import aplicar_investimento
 from services.investimento_strategies import CDBStrategy, TesouroDiretoStrategy
 from services.transfer_service import transferir
@@ -17,6 +17,7 @@ from services.facade import FachadaBanco
 from services.auth import registrar_credenciais, senha_valida, definir_pergunta_seguranca, PERGUNTAS_SEGURANCA
 from services.sessao import papel_atual as current_role, usuario_atual as current_user
 from services.auth import verificar_credenciais
+from utils.exceptions import ValidationError, AuthError, NotFoundError
 
 simbolos_moeda = {'BRL': 'R$', 'USD': '$', 'EUR': '€', 'JPY': '¥'}
 
@@ -37,12 +38,14 @@ class CriarContaCommand(Command):
                 break
             print("Nome inválido! Use apenas letras e espaços.")
 
-        # repetir até CPF válido
+        # solicitar CPF: exigir apenas 11 dígitos numéricos (normalizados)
         while True:
-            cpf = input("CPF: ")
-            if validar_cpf(cpf):
+            cpf_input = input("CPF: ").strip()
+            cpf_norm = normalizar_cpf(cpf_input)
+            if cpf_tem_11_digitos(cpf_norm):
+                cpf = cpf_norm
                 break
-            print("CPF inválido!")
+            print("CPF inválido. Deve conter exatamente 11 dígitos numéricos.")
 
         # verificar CPF duplicado (não revelar número da conta existente)
         from database.ger_bd import DBManager
@@ -105,7 +108,7 @@ class CriarContaCommand(Command):
                 try:
                     definir_pergunta_seguranca(num_conta, pid, answer)
                     print('Pergunta de segurança registrada.')
-                except Exception as e:
+                except (ValidationError, ValueError) as e:
                     print('Erro ao registrar pergunta de segurança:', e)
 
             # cadastrar credenciais — exigir senha de 6 dígitos numéricos
@@ -115,7 +118,7 @@ class CriarContaCommand(Command):
                     try:
                         registrar_credenciais(num_conta, senha, papel='usuario')
                         print('Credenciais registradas com sucesso.')
-                    except Exception as e:
+                    except ValidationError as e:
                         print('Erro ao registrar credenciais:', e)
                     break
                 print('Senha inválida. Deve ser exatamente 6 dígitos numéricos.')
@@ -138,17 +141,20 @@ class CriarAdminCommand(Command):
         print('\nOpcional: registre uma pergunta de segurança para recuperar senha:')
         for pid, texto in PERGUNTAS_SEGURANCA.items():
             print(f" {pid} - {texto}")
-        try:
-            pid_in = input('Escolha o número da pergunta (ou enter para pular): ')
-            if pid_in:
+        pid_in = input('Escolha o número da pergunta (ou enter para pular): ')
+        if pid_in:
+            try:
                 pid = int(pid_in)
-                if pid in PERGUNTAS_SEGURANCA:
-                    ans = input('Digite a resposta da pergunta de segurança: ')
-                    if ans:
+            except ValueError:
+                pid = None
+            if pid in PERGUNTAS_SEGURANCA:
+                ans = input('Digite a resposta da pergunta de segurança: ')
+                if ans:
+                    try:
                         definir_pergunta_seguranca(num_conta, pid, ans)
                         print('Pergunta de segurança registrada.')
-        except Exception as e:
-            print('Erro ao registrar pergunta de segurança:', e)
+                    except (ValidationError, ValueError) as e:
+                        print('Erro ao registrar pergunta de segurança:', e)
 
         # exigir senha válida
         while True:
@@ -157,7 +163,7 @@ class CriarAdminCommand(Command):
                 try:
                     registrar_credenciais(num_conta, senha, papel='admin')
                     print('\nAdministrador criado/atualizado com sucesso.\n')
-                except Exception as e:
+                except ValidationError as e:
                     print('Erro ao registrar credenciais:', e)
                 break
             print('Senha inválida. Deve ser exatamente 6 dígitos numéricos.')
@@ -190,15 +196,20 @@ class DepositarCommand(Command):
 
 
     def execute(self):
-        num = current_user()
-        if num:
-            conta = self.procurar_conta(num)
-        else:
-            conta = self.procurar_conta(input("Número da conta: "))
-        if not conta:
-            print("\nConta não encontrada.\n")
+        # Primeiro: perguntar a conta destino para depósito
+        sess = current_user()
+        destino_num = input("Conta destino para depósito: ").strip()
+        # não permitir depositar na própria conta quando o usuário estiver logado
+        if sess and destino_num == sess:
+            print("\nNão é possível depositar na própria conta.\n")
             return
 
+        conta_destino = self.procurar_conta(destino_num)
+        if not conta_destino:
+            print("\nConta destino não encontrada.\n")
+            return
+
+        # Em seguida: perguntar o valor
         try:
             quantidade = float(input("Valor para depósito: "))
             if quantidade <= 0:
@@ -208,24 +219,33 @@ class DepositarCommand(Command):
             print("\nValor inválido.\n")
             return
 
-        # confirmação por senha no final
-        sess = current_user()
+        # Por fim: confirmação por senha
         if sess:
             senha = input("Confirme sua senha (6 dígitos): ")
-            if not verificar_credenciais(sess, senha):
+            try:
+                ok = verificar_credenciais(sess, senha)
+            except AuthError as e:
+                print(f"\nAutenticação falhou: {e}\n")
+                return
+            if not ok:
                 print("\nSenha incorreta. Operação cancelada.\n")
                 return
         else:
             autor = input("Número da conta autorizadora: ")
             senha = input("Senha da conta autorizadora (6 dígitos): ")
-            if not verificar_credenciais(autor, senha):
+            try:
+                ok = verificar_credenciais(autor, senha)
+            except AuthError as e:
+                print(f"\nAutenticação falhou: {e}\n")
+                return
+            if not ok:
                 print("\nCredenciais inválidas. Operação cancelada.\n")
                 return
 
         # Usar facade para centralizar persistência e lógica
-        self.facade.depositar(conta, quantidade)
+        self.facade.depositar(conta_destino, quantidade)
         print(f"\nDepósito de R$ {quantidade:.2f} realizado com sucesso!\n")
-        verificar_alerta(conta)
+        verificar_alerta(conta_destino)
 
 class SacarCommand(Command):
     def __init__(self, db, procurar_conta_func):
@@ -233,11 +253,13 @@ class SacarCommand(Command):
         self.procurar_conta = procurar_conta_func
         self.facade = FachadaBanco()
     def execute(self):
+        # Saque disponível apenas para usuário logado: usar conta da sessão
         num = current_user()
-        if num:
-            conta = self.procurar_conta(num)
-        else:
-            conta = self.procurar_conta(input("Número da conta: "))
+        if not num:
+            print("\nPara sacar, faça login primeiro.\n")
+            return
+
+        conta = self.procurar_conta(num)
         if not conta:
             print("\nConta não encontrada.\n")
             return
@@ -252,19 +274,16 @@ class SacarCommand(Command):
             print("\nValor inválido para saque.\n")
             return
 
-        # pedir senha de confirmação somente após validações
-        sess = current_user()
-        if sess:
-            senha = input("Confirme sua senha (6 dígitos): ")
-            if not verificar_credenciais(sess, senha):
-                print("\nSenha incorreta. Operação cancelada.\n")
-                return
-        else:
-            autor = input("Número da conta autorizadora: ")
-            senha = input("Senha da conta autorizadora (6 dígitos): ")
-            if not verificar_credenciais(autor, senha):
-                print("\nCredenciais inválidas. Operação cancelada.\n")
-                return
+        # pedir senha de confirmação (somente da sessão)
+        senha = input("Confirme sua senha (6 dígitos): ")
+        try:
+            ok = verificar_credenciais(num, senha)
+        except AuthError as e:
+            print(f"\nAutenticação falhou: {e}\n")
+            return
+        if not ok:
+            print("\nSenha incorreta. Operação cancelada.\n")
+            return
 
         if self.facade.sacar(conta, quantidade):
             print(f"\nSaque de R$ {quantidade:.2f} realizado com sucesso!\n")
@@ -316,13 +335,23 @@ class AplicarInvestimentoCommand(Command):
         sess = current_user()
         if sess:
             senha = input("Confirme sua senha (6 dígitos): ")
-            if not verificar_credenciais(sess, senha):
+            try:
+                ok = verificar_credenciais(sess, senha)
+            except AuthError as e:
+                print(f"\nAutenticação falhou: {e}\n")
+                return
+            if not ok:
                 print("\nSenha incorreta. Operação cancelada.\n")
                 return
         else:
             autor = input("Número da conta autorizadora: ")
             senha = input("Senha da conta autorizadora (6 dígitos): ")
-            if not verificar_credenciais(autor, senha):
+            try:
+                ok = verificar_credenciais(autor, senha)
+            except AuthError as e:
+                print(f"\nAutenticação falhou: {e}\n")
+                return
+            if not ok:
                 print("\nCredenciais inválidas. Operação cancelada.\n")
                 return
 

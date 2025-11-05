@@ -47,3 +47,13 @@ def gerar_numero_conta():
         if not cursor.fetchone():
             return numero
 
+
+def normalizar_cpf(cpf: str) -> str:
+    """Retorna o CPF contendo apenas dígitos (remove pontos, traços e espaços)."""
+    return re.sub(r'\D', '', cpf or '')
+
+
+def cpf_tem_11_digitos(cpf: str) -> bool:
+    """Verifica se o CPF (após normalização) possui exatamente 11 dígitos numéricos."""
+    return len(normalizar_cpf(cpf)) == 11
+

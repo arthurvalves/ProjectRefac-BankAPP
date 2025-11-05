@@ -12,8 +12,9 @@ from services.auth import (
 )
 
 def get_role(num_conta: str):
+    from utils.exceptions import AppError
     try:
         return get_role_passthrough(num_conta)
-    except Exception:
+    except AppError:
         return None
 

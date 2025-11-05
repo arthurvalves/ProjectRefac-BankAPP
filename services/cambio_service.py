@@ -1,10 +1,14 @@
 from models.transacoes import Transacao
 from utils.adapter import AdaptadorBCB
 from utils.proxy import ProxyCacheCambio
+from utils.exceptions import ExternalAPIError, InsufficientFundsError, ValidationError
 from . import cambio_service as _module_ref
 
 
 def cambio(conta, moeda_destino, valor_em_reais, provider=None):
+
+    if valor_em_reais <= 0:
+        raise ValidationError("Valor para câmbio deve ser maior que zero", code="INVALID_AMOUNT")
 
     if provider is None:
         base = AdaptadorBCB()
@@ -13,8 +17,8 @@ def cambio(conta, moeda_destino, valor_em_reais, provider=None):
     taxa = provider.obter_taxa(moeda_destino)
 
     if taxa is None:
-        print("\nMoeda inválida ou erro ao obter taxa de câmbio.")
-        return None
+        # falha ao obter taxa -> exceção external
+        raise ExternalAPIError("Moeda inválida ou erro ao obter taxa de câmbio", details={"moeda": moeda_destino})
 
     # efetua o débito sem criar um registro de 'Saque' separado; registramos uma transação do tipo 'Câmbio'
     if conta.saque(valor_em_reais, registrar=False):
@@ -27,5 +31,4 @@ def cambio(conta, moeda_destino, valor_em_reais, provider=None):
         conta.saldos_estrangeiros[moeda_destino] = saldo_anterior + valor_convertido
         return valor_convertido
     else:
-        print("\nSaldo insuficiente.")
-        return None
+        raise InsufficientFundsError("Saldo insuficiente para câmbio", details={"conta": conta.num_conta, "valor": valor_em_reais})

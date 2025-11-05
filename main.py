@@ -16,6 +16,9 @@ from utils.observer import ObservadorAlertaTransacao
 import os
 from services.auth import verificar_credenciais, registrar_credenciais, esta_bloqueado, registrar_tentativa_falha
 from services.sessao import logar_sessao as login_session, deslogar_sessao as logout_session, usuario_atual as current_user, papel_atual as current_role
+from utils.validacao import normalizar_cpf, cpf_tem_11_digitos
+from utils.exceptions import AppError, DBError, ValidationError, NotFoundError, wrap_exception
+import sqlite3
 
 simbolos_moeda = {'BRL': 'R$', 'USD': '$', 'EUR': '€', 'JPY': '¥'}
 
@@ -232,248 +235,253 @@ def suporte_cliente():
 
 
 def menu():
-    # exigir login antes de mostrar o menu
+    # Envolver todo o fluxo em loop externo para permitir voltar ao login após logout
     while True:
-        print('\n========= AV BANK - LOGIN =========\n')
-        print('1 - Entrar')
-        print('2 - Criar nova conta')
-        print('3 - Esqueci a senha')
-        print('4 - Sair')
-        opc = input('\nEscolha uma opção: ')
-        if opc == '1':
-            cpf = input('CPF: ').strip()
-            key = f"cpf:{cpf}"
-            if esta_bloqueado(key):
-                print('\nMuitas tentativas falhas. Tente novamente mais tarde.\n')
-                continue
-            senha = input('Senha: ')
-            # localizar conta pelo CPF
-            from database.ger_bd import DBManager
-            dbm = DBManager()
-            conta = dbm.carregar_conta_por_cpf(cpf)
-            if not conta:
-                print('\nCPF não encontrado.\n')
-                registrar_tentativa_falha(key)
-                continue
-            num = conta.num_conta
-            if verificar_credenciais(num, senha):
-                login_session(num)
-                print(f"\nBem-vindo, conta {num}! Papel: {current_role()}\n")
+        # exigir login antes de mostrar o menu
+        while True:
+            print('\n========= AV BANK - LOGIN =========\n')
+            print('1 - Entrar')
+            print('2 - Criar nova conta')
+            print('3 - Esqueci a senha')
+            print('4 - Sair')
+            opc = input('\nEscolha uma opção: ')
+            if opc == '1':
+                cpf_input = input('CPF: ').strip()
+                cpf = normalizar_cpf(cpf_input)
+                if not cpf_tem_11_digitos(cpf):
+                    print('\nCPF inválido. Deve conter exatamente 11 dígitos numéricos.\n')
+                    continue
+                key = f"cpf:{cpf}"
+                if esta_bloqueado(key):
+                    print('\nMuitas tentativas falhas. Tente novamente mais tarde.\n')
+                    continue
+                senha = input('Senha: ')
+                # localizar conta pelo CPF
+                from database.ger_bd import DBManager
+                dbm = DBManager()
+                conta = dbm.carregar_conta_por_cpf(cpf)
+                if not conta:
+                    print('\nCPF não encontrado.\n')
+                    registrar_tentativa_falha(key)
+                    continue
+                num = conta.num_conta
+                if verificar_credenciais(num, senha):
+                    login_session(num)
+                    print(f"\nBem-vindo, {conta.proprietario.nome} - Conta {num}!\n")
+                    break
+                else:
+                    print('\nCPF ou senha inválidos.\n')
+                    registrar_tentativa_falha(key)
+            elif opc == '2':
+                CriarContaCommand(db, procurar_conta).execute()
+            elif opc == '3':
+                # Esqueci a senha: pedir CPF e reset via pergunta de segurança
+                cpf_input = input('Informe o CPF cadastrado: ')
+                cpf = normalizar_cpf(cpf_input)
+                if not cpf_tem_11_digitos(cpf):
+                    print('\nCPF inválido. Deve conter exatamente 11 dígitos numéricos.\n')
+                    continue
+                if esta_bloqueado(f"cpf:{cpf}"):
+                    print('\nMuitas tentativas falhas. Tente novamente mais tarde.\n')
+                    continue
+                conta = db.carregar_conta_por_cpf(cpf)
+                if not conta:
+                    print('\nCPF não encontrado.\n')
+                    continue
+                # obter credencial e pergunta
+                cred = db.carregar_credencial(conta.num_conta)
+                from services.auth import PERGUNTAS_SEGURANCA, verificar_resposta_seguranca, redefinir_senha_por_cpf
+                qid = cred.get('sec_question_id') if cred else None
+                if not qid:
+                    print('\nNenhuma pergunta de segurança cadastrada para essa conta. Contate um administrador.\n')
+                    continue
+                pergunta = PERGUNTAS_SEGURANCA.get(qid)
+                print(f"Pergunta: {pergunta}")
+                resposta = input('Resposta: ')
+                if verificar_resposta_seguranca(conta.num_conta, resposta):
+                    while True:
+                        nova = input('Digite a nova senha NUMÉRICA de 6 dígitos: ')
+                        try:
+                            if redefinir_senha_por_cpf(cpf, nova):
+                                print('\nSenha redefinida com sucesso. Faça login com a nova senha.\n')
+                                break
+                        except (NotFoundError, ValidationError) as e:
+                            print('Erro ao redefinir senha:', e)
+                        print('Senha inválida. Deve ser exatamente 6 dígitos numéricos.')
+                else:
+                    print('\nResposta incorreta.\n')
+                    registrar_tentativa_falha(f"cpf:{cpf}")
+            elif opc == '4':
+                print('\nEncerrando.\n')
+                return
+            else:
+                print('\nOpção inválida.\n')
+
+        # menu principal, entra após login bem-sucedido
+        while True:
+            usr = current_user()
+            role = current_role()
+            print("\n========= AV BANK =========\n")
+            
+            print("--- Gestão da Conta ---")
+            print(" 0 - Minha Conta")
+            print(" 1 - Ver saldo")
+            print(" 2 - Ver histórico de transações")
+            print(" 3 - Definir alerta de saldo")
+            print(" 4 - Limpar histórico da conta")
+            
+            print("\n--- Operações Financeiras ---")
+            print(" 5 - Depositar")
+            print(" 6 - Sacar")
+            print(" 7 - Transferir")
+            print(" 8 - Pagar conta")
+
+            print("\n--- Produtos e Serviços ---")
+            print("9 - Solicitar empréstimo")
+            print("10 - Câmbio de moedas")
+            print("11 - Aplicar em Investimentos")
+            print("12 - Solicitar talão de cheques")
+
+            print("\n--- Sistema e Suporte ---")
+            print("13 - Suporte ao Cliente")
+            print("14 - Sair")
+
+            opcao = input("\nEscolha uma opção: ")
+
+            try:
+                if opcao == "1":
+                    VerSaldoCommand(procurar_conta).execute()
+                elif opcao == "0":
+                    minha_conta()
+                elif opcao == "2":
+                    ver_historico()
+                    
+                elif opcao == "3":
+                    from services.sessao import usuario_atual as session_user
+                    num = session_user() or input("Número da conta: ")
+                    conta = procurar_conta(num)
+                    if conta:
+                        try:
+                            limite = float(input("Definir alerta se saldo for menor que: R$"))
+                        except ValueError:
+                            print("\nValor inválido. Operação cancelada.\n")
+                            continue
+                        sess = session_user()
+                        if sess:
+                            senha = input("Confirme sua senha (6 dígitos): ")
+                            if not verificar_credenciais(sess, senha):
+                                print("\nSenha incorreta. Operação cancelada.\n")
+                                continue
+                        else:
+                            autor = input("Número da conta autorizadora: ")
+                            senha = input("Senha da conta autorizadora (6 dígitos): ")
+                            if not verificar_credenciais(autor, senha):
+                                print("\nCredenciais inválidas. Operação cancelada.\n")
+                                continue
+
+                        definir_alerta(conta, limite)
+                        print(f"\nAlerta definido para a conta {conta.num_conta} com limite de R${limite:.2f}.\n")
+                    else:
+                        print("\nConta não encontrada.\n")
+                        
+                elif opcao == "4":
+                    limpar_historico()
+                elif opcao == "5":
+                    DepositarCommand(db, procurar_conta).execute()
+                elif opcao == "6":
+                    SacarCommand(db, procurar_conta).execute()
+                elif opcao == "7":
+                    transferir_entre_contas()
+                elif opcao == "8":
+                    pagamento_de_conta()
+                    
+                elif opcao == "9":
+                    from services.sessao import usuario_atual as session_user
+                    num = session_user() or input("Número da conta: ")
+                    conta = procurar_conta(num)
+                    if conta:
+                        try:
+                            valor = float(input("Valor do empréstimo: "))
+                        except ValueError:
+                            print("\nValor inválido.\n")
+                            continue
+                        sess = session_user()
+                        if sess:
+                            senha = input("Confirme sua senha (6 dígitos): ")
+                            if not verificar_credenciais(sess, senha):
+                                print("\nSenha incorreta. Operação cancelada.\n")
+                                continue
+                        else:
+                            autor = input("Número da conta autorizadora: ")
+                            senha = input("Senha da conta autorizadora (6 dígitos): ")
+                            if not verificar_credenciais(autor, senha):
+                                print("\nCredenciais inválidas. Operação cancelada.\n")
+                                continue
+
+                        solicitar_emprestimo(conta, valor)
+                        salvar_transacao(conta.num_conta, conta.historico[-1])
+                        db.salvar_conta(conta)
+                        print("\nEmpréstimo realizado.\n")
+                    else:
+                        print("\nConta não encontrada.\n")
+                        
+                elif opcao == "10":
+                    from services.sessao import usuario_atual as session_user
+                    num = session_user() or input("Número da conta: ")
+                    conta = procurar_conta(num)
+                    if conta:
+                        while True:
+                            moeda = input("Para qual moeda (USD, EUR, JPY): ").upper()
+                            if moeda in ["USD", "EUR", "JPY"]:
+                                break
+                            print("\nMoeda inválida. Por favor, escolha entre USD, EUR ou JPY.\n")
+
+                        try:
+                            valor = float(input("Valor em R$: "))
+                        except ValueError:
+                            print("\nValor inválido.\n")
+                            continue
+
+                        sess = session_user()
+                        if sess:
+                            senha = input("Confirme sua senha (6 dígitos): ")
+                            if not verificar_credenciais(sess, senha):
+                                print("\nSenha incorreta. Operação cancelada.\n")
+                                continue
+                        else:
+                            autor = input("Número da conta autorizadora: ")
+                            senha = input("Senha da conta autorizadora (6 dígitos): ")
+                            if not verificar_credenciais(autor, senha):
+                                print("\nCredenciais inválidas. Operação cancelada.\n")
+                                continue
+
+                        valor_convertido = cambio(conta, moeda, valor)
+                        if valor_convertido is not None:
+                            salvar_transacao(conta.num_conta, conta.historico[-1])
+                            db.salvar_conta(conta)
+                            print(f"\nOperação realizada com sucesso! Valor convertido: {valor_convertido:.2f} {moeda}\n")
+                        else:
+                            print("\nOperação de câmbio falhou.\n")
+                    else:
+                        print("\nConta não encontrada.\n")
+                        
+                elif opcao == "11":
+                    AplicarInvestimentoCommand(db, procurar_conta).execute()
+                elif opcao == "12":
+                    solicitar_talao_cheques()
+                elif opcao == "13":
+                    suporte_cliente()
+                elif opcao == "14":
+                    logout_session()
+                    print('\nSessão encerrada. Voltando para o login.\n')
+                    os.system('cls')
+                    break
+                else:
+                    os.system('cls')
+                    print("\nOpção inválida!\n")
+            except KeyboardInterrupt:
+                print('\nExecução interrompida pelo usuário. Voltando ao login.\n')
                 break
-            else:
-                print('\nCPF ou senha inválidos.\n')
-                registrar_tentativa_falha(key)
-        elif opc == '2':
-            CriarContaCommand(db, procurar_conta).execute()
-        elif opc == '3':
-            # Esqueci a senha: pedir CPF e reset via pergunta de segurança
-            cpf = input('Informe o CPF cadastrado: ')
-            if esta_bloqueado(f"cpf:{cpf}"):
-                print('\nMuitas tentativas falhas. Tente novamente mais tarde.\n')
-                continue
-            conta = db.carregar_conta_por_cpf(cpf)
-            if not conta:
-                print('\nCPF não encontrado.\n')
-                continue
-            # obter credencial e pergunta
-            cred = db.carregar_credencial(conta.num_conta)
-            from services.auth import PERGUNTAS_SEGURANCA, verificar_resposta_seguranca, redefinir_senha_por_cpf
-            qid = cred.get('sec_question_id') if cred else None
-            if not qid:
-                print('\nNenhuma pergunta de segurança cadastrada para essa conta. Contate um administrador.\n')
-                continue
-            pergunta = PERGUNTAS_SEGURANCA.get(qid)
-            print(f"Pergunta: {pergunta}")
-            resposta = input('Resposta: ')
-            if verificar_resposta_seguranca(conta.num_conta, resposta):
-                while True:
-                    nova = input('Digite a nova senha NUMÉRICA de 6 dígitos: ')
-                    try:
-                        if redefinir_senha_por_cpf(cpf, nova):
-                            print('\nSenha redefinida com sucesso. Faça login com a nova senha.\n')
-                            break
-                    except Exception as e:
-                        print('Erro ao redefinir senha:', e)
-                    print('Senha inválida. Deve ser exatamente 6 dígitos numéricos.')
-            else:
-                print('\nResposta incorreta.\n')
-                registrar_tentativa_falha(f"cpf:{cpf}")
-        elif opc == '4':
-            print('\nEncerrando.\n')
-            return
-        else:
-            print('\nOpção inválida.\n')
-
-    while True:
-        usr = current_user()
-        role = current_role()
-        print("\n========= AV BANK =========\n")
-        
-        print("--- Gestão da Conta ---")
-        print(" 0 - Minha Conta")
-        print(" 1 - Ver saldo")
-        print(" 2 - Ver histórico de transações")
-        print(" 3 - Definir alerta de saldo")
-        print(" 4 - Limpar histórico da conta")
-        
-        print("\n--- Operações Financeiras ---")
-        print(" 5 - Depositar")
-        print(" 6 - Sacar")
-        print(" 7 - Transferir")
-        print(" 8 - Pagar conta")
-
-        print("\n--- Produtos e Serviços ---")
-        print("9 - Solicitar empréstimo")
-        print("10 - Câmbio de moedas")
-        print("11 - Aplicar em Investimentos")
-        print("12 - Solicitar talão de cheques")
-
-        print("\n--- Sistema e Suporte ---")
-        print("13 - Suporte ao Cliente")
-        print("14 - Sair")
-
-        opcao = input("\nEscolha uma opção: ")
-
-        if opcao == "1":
-            VerSaldoCommand(procurar_conta).execute()
-        elif opcao == "0":
-            minha_conta()
-        
-        elif opcao == "2":
-            ver_historico()
-        elif opcao == "3":
-            from services.sessao import usuario_atual as session_user
-            num = session_user() or input("Número da conta: ")
-            conta = procurar_conta(num)
-            if conta:
-                try:
-                    limite = float(input("Definir alerta se saldo for menor que: R$"))
-                except ValueError:
-                    print("\nValor inválido. Operação cancelada.\n")
-                    continue
-                # confirmação por senha no final
-                sess = session_user()
-                if sess:
-                    senha = input("Confirme sua senha (6 dígitos): ")
-                    if not verificar_credenciais(sess, senha):
-                        print("\nSenha incorreta. Operação cancelada.\n")
-                        continue
-                else:
-                    autor = input("Número da conta autorizadora: ")
-                    senha = input("Senha da conta autorizadora (6 dígitos): ")
-                    if not verificar_credenciais(autor, senha):
-                        print("\nCredenciais inválidas. Operação cancelada.\n")
-                        continue
-
-                definir_alerta(conta, limite)
-                print(f"\nAlerta definido para a conta {conta.num_conta} com limite de R${limite:.2f}.\n")
-            else:
-                print("\nConta não encontrada.\n")
-                
-        elif opcao == "4":
-            limpar_historico()
-            
-        elif opcao == "5":
-            DepositarCommand(db, procurar_conta).execute()
-            
-        elif opcao == "6":
-            SacarCommand(db, procurar_conta).execute()
-            
-        elif opcao == "7":
-            transferir_entre_contas()
-            
-        elif opcao == "8":
-            # pagamento_de_conta cuidará da confirmação de senha após validações
-            pagamento_de_conta()
-            
-        elif opcao == "9":
-            # solicitar empréstimo: coletar inputs e deixar confirmação por senha na sequência
-            from services.sessao import usuario_atual as session_user
-            num = session_user() or input("Número da conta: ")
-            conta = procurar_conta(num)
-            if conta:
-                try:
-                    valor = float(input("Valor do empréstimo: "))
-                except ValueError:
-                    print("\nValor inválido.\n")
-                    continue
-                # pedir confirmação por senha antes de efetivar
-                sess = session_user()
-                if sess:
-                    senha = input("Confirme sua senha (6 dígitos): ")
-                    if not verificar_credenciais(sess, senha):
-                        print("\nSenha incorreta. Operação cancelada.\n")
-                        continue
-                else:
-                    autor = input("Número da conta autorizadora: ")
-                    senha = input("Senha da conta autorizadora (6 dígitos): ")
-                    if not verificar_credenciais(autor, senha):
-                        print("\nCredenciais inválidas. Operação cancelada.\n")
-                        continue
-
-                solicitar_emprestimo(conta, valor)
-                salvar_transacao(conta.num_conta, conta.historico[-1])
-                db.salvar_conta(conta)
-                print("\nEmpréstimo realizado.\n")
-            else:
-                print("\nConta não encontrada.\n")
-                
-        elif opcao == "10":
-            # câmbio: coletar inputs primeiro, depois pedir confirmação por senha
-            from services.sessao import usuario_atual as session_user
-            num = session_user() or input("Número da conta: ")
-            conta = procurar_conta(num)
-            if conta:
-                while True:
-                    moeda = input("Para qual moeda (USD, EUR, JPY): ").upper()
-                    if moeda in ["USD", "EUR", "JPY"]:
-                        break
-                    print("\nMoeda inválida. Por favor, escolha entre USD, EUR ou JPY.\n")
-
-                try:
-                    valor = float(input("Valor em R$: "))
-                except ValueError:
-                    print("\nValor inválido.\n")
-                    continue
-
-                # pedir confirmação por senha antes de efetivar
-                sess = session_user()
-                if sess:
-                    senha = input("Confirme sua senha (6 dígitos): ")
-                    if not verificar_credenciais(sess, senha):
-                        print("\nSenha incorreta. Operação cancelada.\n")
-                        continue
-                else:
-                    autor = input("Número da conta autorizadora: ")
-                    senha = input("Senha da conta autorizadora (6 dígitos): ")
-                    if not verificar_credenciais(autor, senha):
-                        print("\nCredenciais inválidas. Operação cancelada.\n")
-                        continue
-
-                valor_convertido = cambio(conta, moeda, valor)
-                
-                if valor_convertido is not None:
-                    salvar_transacao(conta.num_conta, conta.historico[-1])
-                    db.salvar_conta(conta)
-                    print(f"\nOperação realizada com sucesso! Valor convertido: {valor_convertido:.2f} {moeda}\n")
-                else:
-                    print("\nOperação de câmbio falhou.\n")
-            else:
-                print("\nConta não encontrada.\n")
-                
-        elif opcao == "11":
-            AplicarInvestimentoCommand(db, procurar_conta).execute()
-        elif opcao == "12":
-            solicitar_talao_cheques()
-        elif opcao == "13":
-            suporte_cliente()
-        elif opcao == "14":
-            logout_session()
-            print('\nSessão encerrada. Voltando para o login.\n')
-            return
-        else:
-            os.system('cls')
-            print("\nOpção inválida!\n")
             
 
 def minha_conta():
@@ -507,7 +515,30 @@ def minha_conta():
 
 
 if __name__ == "__main__":
+    # Inicialização com tratamento de exceções específicas da aplicação
     db = DBManager()
-    db.criar_tabelas()
-    criar_tabela_transacoes()
-    menu()
+    try:
+        db.criar_tabelas()
+        criar_tabela_transacoes()
+        try:
+            menu()
+        except KeyboardInterrupt:
+            print('\nExecução interrompida pelo usuário.\n')
+    except AppError as ae:
+        # falha na inicialização com erro conhecido
+        print(f"\nFalha ao iniciar: {ae.message}\n")
+    except DBError as de:
+        # erro de banco de dados durante inicialização
+        print("\nErro ao iniciar o aplicativo (DB). Consulte o log para mais detalhes.\n")
+        if os.environ.get('AVBANK_DEBUG') == '1':
+            import traceback
+            traceback.print_exc()
+    finally:
+        # tentar fechar conexão de DB se disponível
+        try:
+            conn = db.get_connection()
+            if conn:
+                conn.close()
+        except sqlite3.Error:
+            # ignorar erros de fechamento específicos do sqlite
+            pass

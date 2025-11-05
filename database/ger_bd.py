@@ -88,7 +88,7 @@ class DBManager:
             # carregar saldos estrangeiros se presente
             try:
                 conta.saldos_estrangeiros = json.loads(row[4]) if row[4] else {}
-            except Exception:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 conta.saldos_estrangeiros = {}
             conta.historico = carregar_transacoes(row[0])
             return conta
@@ -103,7 +103,7 @@ class DBManager:
             conta = Conta(row[0], user, row[3])
             try:
                 conta.saldos_estrangeiros = json.loads(row[4]) if row[4] else {}
-            except Exception:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 conta.saldos_estrangeiros = {}
             conta.historico = carregar_transacoes(row[0])
             return conta

@@ -1,13 +1,15 @@
 from models.transacoes import Transacao
 from .investimento_strategies import InvestimentoStrategy
+from utils.exceptions import ValidationError
 
 def solicitar_emprestimo(conta, valor):
-    if valor > 0:
-        conta.deposito(valor)
-        descricao = f"Empréstimo de R${valor:.2f} solicitado e creditado."
-        conta.historico.append(Transacao("Empréstimo", valor, descricao=descricao))
-        return True
-    return False
+    if valor <= 0:
+        raise ValidationError("Valor de empréstimo deve ser maior que zero", code="INVALID_AMOUNT")
+
+    conta.saldo += valor
+    descricao = f"Empréstimo de R${valor:.2f} solicitado e creditado."
+    conta.historico.append(Transacao("Empréstimo", valor, descricao=descricao))
+    return True
 
 def aplicar_investimento(conta, valor, meses, estrategia: InvestimentoStrategy):
     if valor <= 0 or meses <= 0:

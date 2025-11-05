@@ -3,6 +3,7 @@ import os
 import binascii
 import time
 from database.ger_bd import DBManager
+from utils.exceptions import AuthError, ValidationError, NotFoundError, AppError
 
 _tentativas_falhas = {}  # chave -> [contador, ts_primeira]
 MAX_TENTATIVAS = 3
@@ -23,21 +24,25 @@ def senha_valida(senha: str) -> bool:
 def registrar_credenciais(num_conta: str, senha: str, papel: str = 'usuario'):
     db = DBManager()
     if not senha_valida(senha):
-        raise ValueError('Senha inválida. Deve conter exatamente 6 dígitos numéricos.')
+        raise ValidationError('Senha inválida. Deve conter exatamente 6 dígitos numéricos.', code='INVALID_PASSWORD')
+    # preservar possíveis dados de pergunta de segurança já salvos
+    cred = db.carregar_credencial(num_conta) or {}
+    sec_q = cred.get('sec_question_id')
+    sec_ans = cred.get('sec_answer_hash')
     salt_hex, pwdhash_hex = _hash_senha(senha)
     senha_hash = f"{salt_hex}${pwdhash_hex}"
-    db.salvar_credencial(num_conta, senha_hash=senha_hash, role=papel)
+    db.salvar_credencial(num_conta, senha_hash=senha_hash, role=papel, sec_question_id=sec_q, sec_answer_hash=sec_ans)
 
 
 def verificar_credenciais(num_conta: str, senha: str) -> bool:
     chave = f"conta:{num_conta}"
     if esta_bloqueado(chave):
-        return False
+        raise AuthError("Conta temporariamente bloqueada devido a tentativas falhas", code="LOCKED")
     db = DBManager()
     cred = db.carregar_credencial(num_conta)
     if not cred or not cred.get('senha_hash'):
         registrar_tentativa_falha(chave)
-        return False
+        raise AuthError("Credenciais inválidas", code="INVALID_CREDENTIALS")
     try:
         salt_hex, hash_hex = cred['senha_hash'].split('$')
         salt = binascii.unhexlify(salt_hex)
@@ -48,9 +53,9 @@ def verificar_credenciais(num_conta: str, senha: str) -> bool:
         else:
             resetar_tentativas_falha(chave)
         return ok
-    except Exception:
+    except (binascii.Error, ValueError, TypeError) as e:
         registrar_tentativa_falha(chave)
-        return False
+        raise AuthError("Erro interno ao verificar credenciais", original_exception=e)
 
 
 def get_role(num_conta: str):
@@ -75,7 +80,9 @@ def definir_pergunta_seguranca(num_conta: str, pergunta_id: int, resposta: str):
     if pergunta_id not in PERGUNTAS_SEGURANCA:
         raise ValueError('Pergunta inválida')
     db = DBManager()
-    salt_hex, ans_hash = _hash_senha(resposta)
+    # normalizar resposta para evitar sensibilidade a maiúsculas/minúsculas
+    resposta_norm = (resposta or '').strip().lower()
+    salt_hex, ans_hash = _hash_senha(resposta_norm)
     combinado = f"{salt_hex}${ans_hash}"
     cred = db.carregar_credencial(num_conta) or {}
     senha_hash = cred.get('senha_hash')
@@ -86,35 +93,37 @@ def definir_pergunta_seguranca(num_conta: str, pergunta_id: int, resposta: str):
 def verificar_resposta_seguranca(num_conta: str, resposta: str) -> bool:
     chave = f"seg:{num_conta}"
     if esta_bloqueado(chave):
-        return False
+        raise AuthError("Conta bloqueada por tentativas na pergunta de segurança", code="LOCKED")
     db = DBManager()
     cred = db.carregar_credencial(num_conta)
     if not cred or not cred.get('sec_answer_hash'):
         registrar_tentativa_falha(chave)
-        return False
+        raise AuthError("Resposta de segurança inválida ou não cadastrada", code="INVALID_SECURITY_ANSWER")
     try:
         salt_hex, hash_hex = cred['sec_answer_hash'].split('$')
         salt = binascii.unhexlify(salt_hex)
-        _, tentada = _hash_senha(resposta, salt)
+        # normalizar resposta para comparação case-insensitive
+        resposta_norm = (resposta or '').strip().lower()
+        _, tentada = _hash_senha(resposta_norm, salt)
         ok = tentada == hash_hex
         if not ok:
             registrar_tentativa_falha(chave)
         else:
             resetar_tentativas_falha(chave)
         return ok
-    except Exception:
+    except (binascii.Error, ValueError, TypeError) as e:
         registrar_tentativa_falha(chave)
-        return False
+        raise AuthError("Erro interno ao verificar resposta de segurança", original_exception=e)
 
 
 def redefinir_senha_por_cpf(cpf: str, nova_senha: str) -> bool:
     db = DBManager()
     conta = db.carregar_conta_por_cpf(cpf)
     if not conta:
-        return False
+        raise NotFoundError("Conta não encontrada para o CPF informado")
     num_conta = conta.num_conta
     if not senha_valida(nova_senha):
-        raise ValueError('Senha inválida. Deve conter exatamente 6 dígitos numéricos.')
+        raise ValidationError('Senha inválida. Deve conter exatamente 6 dígitos numéricos.', code='INVALID_PASSWORD')
     salt_hex, pwdhash_hex = _hash_senha(nova_senha)
     senha_hash = f"{salt_hex}${pwdhash_hex}"
     cred = db.carregar_credencial(num_conta) or {}
@@ -169,7 +178,7 @@ is_locked = esta_bloqueado
 def get_role(num_conta: str):
     try:
         return get_role_passthrough(num_conta)
-    except Exception:
+    except AppError:
         return None
 
 __all__ = [

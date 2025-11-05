@@ -1,11 +1,11 @@
 
 import requests
 from datetime import datetime, timedelta
+from .exceptions import ExternalAPIError, wrap_exception
 
 def get_cambio(moeda_destino):
     moedas_suportadas = ["USD", "EUR", "JPY"]
     if moeda_destino not in moedas_suportadas:
-        print("Moeda inválida.")
         return None
 
     formato_data_bcb = "%m-%d-%Y"
@@ -26,8 +26,6 @@ def get_cambio(moeda_destino):
             if dados.get("value"):
                 return dados["value"][0]["cotacaoCompra"]
         except requests.exceptions.RequestException as e:
-            print(f"Erro ao contatar a API do BCB: {e}")
-            break
+            raise wrap_exception(e, ExternalAPIError, message="Falha na comunicação com a API do BCB", details={"url": url})
 
-    print("Moeda inválida ou erro ao obter taxa de câmbio.")
     return None
