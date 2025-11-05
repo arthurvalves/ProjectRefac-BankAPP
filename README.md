@@ -71,7 +71,7 @@ O objetivo principal foi aplicar um conjunto de **padrões de projeto** para gar
 
 ### A classe (trecho principal)
 
-O projeto centraliza informações e metadados de erro em `AppError`. Exemplo (trecho de `utils/exceptions.py`):
+O projeto centraliza informações de erro em `AppError`. Exemplo (trecho de `utils/exceptions.py`):
 
 ```python
 class AppError(Exception):
